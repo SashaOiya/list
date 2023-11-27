@@ -2,6 +2,8 @@
 
 void Text_Dump ( struct List_t *list )
 {
+    // FILE* html_file; // "list_dump.html"
+    // const char *const ....
     printf ( "       \t" );
     for ( int i = 0; i < list->capacity; ++i ) {
         printf ( "%3d\t", i );
@@ -39,11 +41,15 @@ void Text_Dump ( struct List_t *list )
     printf ( "head : %d\ntail : %d\n\n", list->head, list->tail );
 }
 
-void List_Insert ( struct List_t *list, int place, int value )
+ListError_t List_Insert ( struct List_t *list, int place, int value )
 {
     ++list->size;
     if ( list->capacity <= list->size ) {
-        List_Realloc ( list );
+        if ( List_Realloc ( list ) ) {
+            printf ( "Realloc error\n" );
+
+            return CRASH_ERR;
+        }
     }
 
     const int prev_free   = list->free;
@@ -62,6 +68,8 @@ void List_Insert ( struct List_t *list, int place, int value )
     list->prev[prev_free]             = place;
 
     Text_Dump ( list );
+
+    return OK;
 }
 
 void List_Delete ( struct List_t *list, int place )
@@ -81,7 +89,7 @@ void List_Delete ( struct List_t *list, int place )
     list->next[place] = list->free;
     list->free        = place;
 
-    list->prev[place] = -1;
+    list->prev[place] = FREE_INDEX;   //?
 
     list->next[temp_prev] = temp_next;
     list->prev[temp_next] = temp_prev;
@@ -91,7 +99,7 @@ void List_Delete ( struct List_t *list, int place )
 
 int List_Search ( struct List_t *list, int search_location )
 {
-    int new_place = 1;
+    int new_place = 1; // const FirstValidIndex;
     for ( int i = 0; i < search_location - 1; ++i ) {
         new_place = list->next[new_place];
     }
@@ -99,7 +107,7 @@ int List_Search ( struct List_t *list, int search_location )
     return new_place;
 }
 
-void List_Ctor   ( struct List_t *list, elem_t start_buffer[], int buffer_size )
+ListError_t List_Ctor   ( struct List_t *list, elem_t start_buffer[], int buffer_size )
 {
     list->size     = buffer_size;
     list->capacity = list->size;
@@ -108,51 +116,64 @@ void List_Ctor   ( struct List_t *list, elem_t start_buffer[], int buffer_size )
     list->next     = ( elem_t *)calloc ( list->capacity, sizeof (elem_t) );
     list->prev     = ( elem_t *)calloc ( list->capacity, sizeof (elem_t) );
 
-    assert ( list->code != nullptr );   //if
+    if ( ! ( list->code && list->next && list->prev ) ) {
+        free ( list->code );
+        free ( list->next );
+        free ( list->prev );
+
+        return CAL_ERR;
+    }
 
     memcpy ( list->code + 1, start_buffer, ( list->size ) * sizeof ( elem_t ) );
     list->code[0] = POISON;
 
-    bool free_flag = false;
-
     for ( int i = list->head; i < list->capacity; ++i ) {
-            list->next[i] = i + 1;
-            list->prev[i] = i - 1;
+          list->next[i] = i + 1;
+          list->prev[i] = i - 1;
     }
+
     list->next[list->capacity-1] = 0;
     list->free                   = list->capacity;
     list->tail                   = list->capacity - 1;
     list->next[0]                = list->head;
 
     Text_Dump ( list );
+
+    return OK;
 }
 
-void List_Realloc ( struct List_t *list )
+ListError_t List_Realloc ( struct List_t *list )
 {
     assert ( list       != nullptr );
     assert ( list->code != nullptr );
 
-    list->capacity *= 2;
+    list->capacity *= REALLOC_CONST;
 
     list->code = ( elem_t *) realloc ( list->code, list->capacity * sizeof ( elem_t ) );
     list->next = ( int *)    realloc ( list->next, list->capacity * sizeof ( int )    );
     list->prev = ( int *)    realloc ( list->prev, list->capacity * sizeof ( int )    );
 
-    assert ( list->code != nullptr );
-    assert ( list->next != nullptr );
-    assert ( list->prev != nullptr );
+    if ( ! ( list->code && list->next && list->prev ) ) {
+        free ( list->code );
+        free ( list->next );
+        free ( list->prev );
 
-    for ( int i = list->capacity / 2; i < list->capacity; ++i ) {
+        return REAL_ERR;
+    }
+
+    for ( int i = list->capacity / REALLOC_CONST; i < list->capacity; ++i ) {
         list->code[i] = 0;
         list->next[i] = i + 1;
-        list->prev[i] = -1;
+        list->prev[i] = REALLOC_CONST;
     }
+
+    return OK;
 }
 
 void Graph_Dump ( const struct List_t *list )
 {
     FILE *dot = fopen ( "list.dot", "w" );
-
+    // +perror
     fprintf ( dot, "digraph G { \n"
                    "rankdir = LR;\n"
                    "node [shape = record];\n"
@@ -174,9 +195,12 @@ void Graph_Dump ( const struct List_t *list )
     fprintf ( dot, "}\n" );
 
     //system ( "del list.png" );
-    system ( "dot -T png list.dot -o list.png" );
+    system ( "dot -T png list.dot -o list.png" ); // unique name static
     system ( "list.png" );
-
+    // html tags
+    // <pre>     <\pre>
+    // print
+    // printf( html_file, "<img = "list_1.png"><\img>")
     fclose ( dot );
 }
 
@@ -188,8 +212,7 @@ void List_Dtor ( struct List_t *list )
     free ( list->next );
     free ( list->prev );
 
-    list->code = list->next = list->prev = nullptr;
-
+    memset( list, 0, sizeof(List_t));
 }
 
 
